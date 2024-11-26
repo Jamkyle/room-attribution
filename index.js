@@ -230,7 +230,7 @@ const main = () => {
           !session.room.assignedGamemaster.trained_rooms.includes(
             session.room.id
           )
-            ? "(Fallback)"
+            ? "à former (Fallback)"
             : ""
         }`
       );
@@ -243,8 +243,8 @@ const main = () => {
   console.log(
     `${
       rooms.every((room) => room.assignedGamemaster)
-        ? "Toutes les salles ont pu быть attribuées !"
-        : "Certaines salles n'ont pas pu быть attribuées !"
+        ? "Toutes les salles ont pu être attribuées !"
+        : "Certaines salles n'ont pas pu être attribuées !"
     } `
   );
 };
