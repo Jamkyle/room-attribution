@@ -66,78 +66,187 @@ const ROOMS = [
   { id: 12, name: "Mission secrète" },
 ];
 
-const random_gamemaster_array = size => GAMEMASTERS.sort(() => Math.random() - 0.5).slice(0, size);
+const random_gamemaster_array = (size) =>
+  GAMEMASTERS.sort(() => Math.random() - 0.5).slice(0, size);
 
-const assignGamemastersStrict = (sessions, gamemasters, usedGamemasters) => {
-    const unassignableRooms = [];
+const assignGamemasters = (rooms, gamemasters, usedGamemasters) => {
+  const unassignableRooms = [];
 
-    sessions.forEach(session => {
-        const availableGamemasters = gamemasters.filter(
-            gm => gm.trained_rooms.includes(session.room.id) && !usedGamemasters.has(gm.id)
-        );
+  rooms.forEach((room) => {
+    const availableGamemasters = gamemasters
+      .filter(
+        (gm) =>
+          gm.trained_rooms.includes(room.id) && !usedGamemasters.has(gm.id)
+      )
+      .sort((a, b) => a.trained_rooms.length - b.trained_rooms.length);
 
-        if (availableGamemasters.length === 0) {
-            unassignableRooms.push(session.room);
-        } else {
-            const selectedGamemaster = availableGamemasters[0];
-            session.assignedGamemaster = selectedGamemaster;
-            usedGamemasters.add(selectedGamemaster.id);
-        }
-    });
+    if (availableGamemasters.length === 0) {
+      unassignableRooms.push(room);
+    } else {
+      const selectedGamemaster = availableGamemasters[0];
+      room.assignedGamemaster = selectedGamemaster;
+      usedGamemasters.add(selectedGamemaster.id);
+    }
+  });
 
-    return unassignableRooms;
+  return unassignableRooms;
 };
 
-const assignGamemastersFallback = (sessions, gamemasters, usedGamemasters) => {
-    sessions.forEach(session => {
-        if (!session.assignedGamemaster) {
-            const availableGamemasters = gamemasters.filter(gm => !usedGamemasters.has(gm.id));
+/**
+ * Tente de réattribuer des Game Masters aux salles qui n'ont pas été attribuées
+ * lors du premier passage, en trouvant une autre salle ayant un Game Master
+ * formé pour la salle en question et en échangeant les deux Game Masters.
+ *
+ * @param {Array} rooms Liste des salles nécessitant un Game Master attribué.
+ * @param {Array} gamemasters Liste de tous les Game Masters disponibles.
+ * @param {Set} usedGamemasters Ensemble des IDs des Game Masters qui ont déjà
+ * été attribués.
+ *
+ * @returns {Array} Liste des salles qui n'ont toujours pas de Game Master
+ * attribué après l'étape de réattribution.
+ */
+const reassignGamemasters = (rooms, gamemasters, usedGamemasters) => {
+  const unassignableRooms = rooms.filter((room) => !room.assignedGamemaster);
 
-            if (availableGamemasters.length > 0) {
-                const selectedGamemaster = availableGamemasters[0];
-                session.assignedGamemaster = selectedGamemaster;
-                usedGamemasters.add(selectedGamemaster.id);
-                console.log(
-                    `Fallback : Aucun GM formé pour la salle "${session.room.name}". Assignation d'un GM non formé (${selectedGamemaster.name}).`
-                );
-            } else {
-                console.log(`Impossible d'assigner un GM pour la salle : "${session.room.name}"`);
-            }
+  for (let room of unassignableRooms) {
+    for (let otherRoom of rooms) {
+      const gmAssigned = otherRoom.assignedGamemaster;
+
+      if (
+        gmAssigned &&
+        gmAssigned.trained_rooms.includes(room.id) &&
+        room !== otherRoom
+      ) {
+        const availableReplacement = gamemasters.find(
+          (gm) =>
+            gm.trained_rooms.includes(otherRoom.id) &&
+            !usedGamemasters.has(gm.id) &&
+            gm.id !== gmAssigned.id
+        );
+
+        if (availableReplacement) {
+          console.log(
+            `Échange : GM "${gmAssigned.name}" de la salle "${otherRoom.name}" vers "${room.name}", remplacé par "${availableReplacement.name}".`
+          );
+
+          room.assignedGamemaster = gmAssigned;
+          otherRoom.assignedGamemaster = availableReplacement;
+
+          usedGamemasters.add(availableReplacement.id);
+          break;
         }
-    });
+      }
+    }
+  }
+
+  return rooms.filter((room) => !room.assignedGamemaster);
+};
+
+/**
+ * Fonction Fallback pour attribuer un Game Master non formé à une salle si aucun Game Master formé n'est disponible.
+ *
+ * @param {Array} rooms Liste des salles qui nécessitent l'attribution d'un Game Master.
+ * @param {Array} gamemasters Liste de tous les Game Masters disponibles.
+ * @param {Set} usedGamemasters Ensemble des IDs des Game Masters qui ont déjà été attribués.
+ */
+const assignGamemastersFallback = (rooms, gamemasters, usedGamemasters) => {
+  rooms.forEach((room) => {
+    if (!room.assignedGamemaster) {
+      const availableGamemasters = gamemasters.filter(
+        (gm) => !usedGamemasters.has(gm.id)
+      );
+
+      if (availableGamemasters.length > 0) {
+        const selectedGamemaster = availableGamemasters[0];
+        room.assignedGamemaster = selectedGamemaster;
+        usedGamemasters.add(selectedGamemaster.id);
+        console.log(
+          `Fallback : Aucun GM formé pour la salle "${room.name}". Assignation d'un GM non formé (${selectedGamemaster.name}).`
+        );
+      } else {
+        console.log(
+          `Impossible d'assigner un GM pour la salle : "${room.name}"`
+        );
+      }
+    }
+  });
 };
 
 const main = () => {
-    const gamemasters = random_gamemaster_array(GAMEMASTERS.length);
-    const sessions = ROOMS.map(room => ({ room, assignedGamemaster: null }));
-    const usedGamemasters = new Set();
+  const gamemasters = random_gamemaster_array(ROOMS.length);
+  const sessions = ROOMS.map((room) => ({ room }));
+  const rooms = ROOMS.slice();
 
-    const unassignableRooms = assignGamemastersStrict(sessions, gamemasters, usedGamemasters);
+  const usedGamemasters = new Set();
 
-    if (unassignableRooms.length > 0) {
-        console.log("Certaines salles n'ont pas pu être attribuées avec des GMs formés :");
-        unassignableRooms.forEach(room => console.log(`- ${room.name}`));
+  // Attribution des Game Masters formés de façon stricte
+  console.log("Attribution des Game Masters...");
+  const unassignableRooms = assignGamemasters(
+    rooms,
+    gamemasters,
+    usedGamemasters
+  );
+
+  if (unassignableRooms.length > 0) {
+    console.log(
+      "Certaines salles n'ont pas pu être attribuées avec des GMs formés :"
+    );
+    unassignableRooms.forEach((room) => console.log(`- ${room.name}`));
+  }
+  // Ici on rajoute une étape qui regarde si on peut réassigner les GMs formés pour optimiser
+  console.log("Réassignation pour optimiser...");
+  const remainingUnassignableRooms = reassignGamemasters(
+    rooms,
+    gamemasters,
+    usedGamemasters
+  );
+
+  if (remainingUnassignableRooms.length > 0) {
+    console.log(
+      "Certaines salles n'ont pas pu être attribuées après optimisation :"
+    );
+    assignGamemastersFallback(
+      remainingUnassignableRooms,
+      gamemasters,
+      usedGamemasters
+    );
+  } else {
+    console.log("Toutes les salles ont été attribuées après optimisation !");
+  }
+
+  sessions.forEach((session) => {
+    const room = rooms.find((r) => r.id === session.room.id);
+    session.room.assignedGamemaster = room.assignedGamemaster;
+  });
+
+  // Affichage du Resutlat des attributions
+  console.log("\nRésultat des attributions :");
+  sessions.forEach((session) => {
+    if (session.room.assignedGamemaster) {
+      console.log(
+        `Salle: ${session.room.name} - GM: ${
+          session.room.assignedGamemaster.name
+        } ${
+          !session.room.assignedGamemaster.trained_rooms.includes(
+            session.room.id
+          )
+            ? "(Fallback)"
+            : ""
+        }`
+      );
+    } else {
+      console.log(`Salle: ${session.room.name} - Non attribuée`);
     }
-    
-    // Solution 1 Proposé des GameMaster non formé mais disponible:
-    assignGamemastersFallback(sessions, gamemasters, usedGamemasters);
-    // Solution 2: ajouté des priorités pour chaque room et assigner en fonction des priorités
-    // solution non codé
+  });
 
-    console.log("Résultat des attributions :");
-    sessions.forEach(session => {
-        if (session.assignedGamemaster) {
-            console.log(
-                `Salle: ${session.room.name} - GM: ${session.assignedGamemaster.name} ${
-                    !session.assignedGamemaster.trained_rooms.includes(session.room.id)
-                        ? "(Fallback)"
-                        : ""
-                }`
-            );
-        } else {
-            console.log(`Salle: ${session.room.name} - Non attribuée`);
-        }
-    });
+  // Dernier message pour indiquer si toutes les salles ont pu être attribuées ou non
+  console.log(
+    `${
+      rooms.every((room) => room.assignedGamemaster)
+        ? "Toutes les salles ont pu быть attribuées !"
+        : "Certaines salles n'ont pas pu быть attribuées !"
+    } `
+  );
 };
 
 main();
